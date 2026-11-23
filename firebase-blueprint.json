@@ -1,0 +1,552 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user career profile and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "location": { "type": "string", "maxLength": 120 },
+        "linkedin": { "type": "string", "maxLength": 250 },
+        "portfolio": { "type": "string", "maxLength": 250 },
+        "summary": { "type": "string", "maxLength": 2000 },
+        "certifications": { "type": "array" },
+        "preferredLanguage": { "type": "string", "enum": ["en", "hi"] },
+        "education": { "type": "string", "maxLength": 200 },
+        "qualification": { "type": "string", "maxLength": 120 },
+        "skills": { "type": "array" },
+        "experience": { "type": "number" },
+        "preferredLocations": { "type": "array" },
+        "preferredCategories": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "consentGiven": { "type": "boolean" },
+        "notificationPrefs": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "preferredLanguage", "status", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Server-controlled administrator access record.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "grantedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "JobListing": {
+      "title": "JobListing",
+      "description": "Verified or pending job opportunity record with deterministic eligibility rules.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 3, "maxLength": 180 },
+        "organization": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "organizationLogo": { "type": "string", "maxLength": 500 },
+        "category": { "type": "string", "maxLength": 80 },
+        "sector": { "type": "string", "enum": ["government", "private", "internship"] },
+        "location": { "type": "string", "maxLength": 120 },
+        "employmentType": { "type": "string", "maxLength": 60 },
+        "workMode": { "type": "string", "enum": ["onsite", "remote", "hybrid"] },
+        "experience": { "type": "string", "maxLength": 80 },
+        "qualifications": { "type": "array" },
+        "eligibilityRules": { "type": "object" },
+        "description": { "type": "string", "maxLength": 6000 },
+        "responsibilities": { "type": "array" },
+        "salary": { "type": "string", "maxLength": 160 },
+        "importantDates": { "type": "object" },
+        "applicationFee": { "type": "string", "maxLength": 300 },
+        "requiredDocuments": { "type": "array" },
+        "selectionProcess": { "type": "array" },
+        "applicationInstructions": { "type": "string", "maxLength": 3000 },
+        "officialSourceURL": { "type": "string", "maxLength": 500 },
+        "applicationURL": { "type": "string", "maxLength": 500 },
+        "sourceName": { "type": "string", "maxLength": 160 },
+        "verificationStatus": { "type": "string", "enum": ["pending", "verified", "rejected", "expired"] },
+        "verifiedBy": { "type": "string", "maxLength": 128 },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "maxLength": 40 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "organization", "category", "sector", "location", "officialSourceURL", "applicationURL", "verificationStatus", "createdAt", "updatedAt"]
+    },
+    "JobCategory": {
+      "title": "JobCategory",
+      "description": "Managed job category taxonomy.",
+      "type": "object",
+      "properties": {
+        "slug": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "nameHi": { "type": "string", "maxLength": 100 },
+        "sector": { "type": "string", "enum": ["government", "private", "internship", "all"] },
+        "description": { "type": "string", "maxLength": 300 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["slug", "name", "sector", "isActive", "createdAt"]
+    },
+    "SavedJob": {
+      "title": "SavedJob",
+      "description": "User-saved job reference.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobTitle": { "type": "string", "maxLength": 180 },
+        "organization": { "type": "string", "maxLength": 160 },
+        "deadline": { "type": "string", "maxLength": 40 },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "jobId", "jobTitle", "organization", "savedAt"]
+    },
+    "ApplicationRecord": {
+      "title": "ApplicationRecord",
+      "description": "User application tracking entry.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobId": { "type": "string", "maxLength": 128 },
+        "jobTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "organization": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "status": { "type": "string", "enum": ["Saved", "Planning to Apply", "Applied", "Assessment", "Interview", "Selected", "Rejected", "Withdrawn"] },
+        "appliedAt": { "type": "string", "maxLength": 40 },
+        "deadline": { "type": "string", "maxLength": 40 },
+        "interviewDate": { "type": "string", "maxLength": 40 },
+        "followUpDate": { "type": "string", "maxLength": 40 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "applicationURL": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "jobTitle", "organization", "status", "createdAt", "updatedAt"]
+    },
+    "EligibilityCheck": {
+      "title": "EligibilityCheck",
+      "description": "Deterministic eligibility check history entry saved with user consent.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "jobTitle": { "type": "string", "maxLength": 180 },
+        "result": { "type": "string", "enum": ["Eligible", "Not Eligible", "Needs Verification"] },
+        "matchedRequirements": { "type": "array" },
+        "unmatchedRequirements": { "type": "array" },
+        "missingInformation": { "type": "array" },
+        "sourceReference": { "type": "string", "maxLength": 500 },
+        "checkedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "jobId", "jobTitle", "result", "checkedAt"]
+    },
+    "ResumeRecord": {
+      "title": "ResumeRecord",
+      "description": "User-authored resume built in Resume Studio.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "template": { "type": "string", "enum": ["modern", "minimal_ats", "fresh_graduate", "technical"] },
+        "personalDetails": { "type": "object" },
+        "summary": { "type": "string", "maxLength": 2000 },
+        "education": { "type": "array" },
+        "experience": { "type": "array" },
+        "internships": { "type": "array" },
+        "projects": { "type": "array" },
+        "skills": { "type": "array" },
+        "certifications": { "type": "array" },
+        "languages": { "type": "array" },
+        "achievements": { "type": "array" },
+        "sectionOrder": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "template", "personalDetails", "createdAt", "updatedAt"]
+    },
+    "DocumentChecklist": {
+      "title": "DocumentChecklist",
+      "description": "User document preparation checklist and private file metadata.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "jobId": { "type": "string", "maxLength": 128 },
+        "items": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "items", "createdAt", "updatedAt"]
+    },
+    "AIChatSession": {
+      "title": "AIChatSession",
+      "description": "Saved FormSaathi AI career assistant conversation.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "language": { "type": "string", "enum": ["en", "hi"] },
+        "jobId": { "type": "string", "maxLength": 128 },
+        "messages": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "language", "messages", "createdAt", "updatedAt"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "In-app notification for deadlines, interviews, exam reminders, or matches.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "enum": ["matching_job", "deadline", "interview", "follow_up", "resume", "account", "exam_reminder"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "message": { "type": "string", "maxLength": 600 },
+        "link": { "type": "string", "maxLength": 300 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "title", "message", "read", "createdAt"]
+    },
+    "JobReport": {
+      "title": "JobReport",
+      "description": "User-submitted report flagging suspicious or outdated job listings.",
+      "type": "object",
+      "properties": {
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "jobTitle": { "type": "string", "maxLength": 180 },
+        "reporterId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "reason": { "type": "string", "minLength": 3, "maxLength": 500 },
+        "warningIndicators": { "type": "array" },
+        "adminNote": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["open", "reviewed", "resolved", "dismissed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["jobId", "reporterId", "reason", "status", "createdAt", "updatedAt"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Contact and support request submitted by users or visitors.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "subject": { "type": "string", "minLength": 3, "maxLength": 180 },
+        "message": { "type": "string", "minLength": 10, "maxLength": 3000 },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "subject", "message", "status", "createdAt", "updatedAt"]
+    },
+    "SubscriptionRecord": {
+      "title": "SubscriptionRecord",
+      "description": "User subscription tier and monthly feature usage counters.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "plan": { "type": "string", "enum": ["free", "pro"] },
+        "status": { "type": "string", "enum": ["active", "test_pending", "canceled"] },
+        "aiQueriesUsed": { "type": "number" },
+        "eligibilityChecksUsed": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "plan", "status", "aiQueriesUsed", "eligibilityChecksUsed", "updatedAt"]
+    },
+    "AIUsageLog": {
+      "title": "AIUsageLog",
+      "description": "Telemetry summary for AI requests without sensitive prompt payloads.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "feature": { "type": "string", "enum": ["assistant", "resume_assist", "resume_analyzer", "mock_interview", "career_roadmap", "form_assistant"] },
+        "language": { "type": "string", "enum": ["en", "hi"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "feature", "language", "createdAt"]
+    },
+    "AdminAuditLog": {
+      "title": "AdminAuditLog",
+      "description": "Immutable log of administrative actions.",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "adminEmail": { "type": "string", "maxLength": 200 },
+        "action": { "type": "string", "maxLength": 120 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminUid", "action", "targetId", "createdAt"]
+    },
+    "PlatformSetting": {
+      "title": "PlatformSetting",
+      "description": "Public platform announcement and content settings.",
+      "type": "object",
+      "properties": {
+        "announcementBanner": { "type": "string", "maxLength": 300 },
+        "showAnnouncement": { "type": "boolean" },
+        "aiDailyLimitFree": { "type": "number" },
+        "eligibilityLimitFree": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["showAnnouncement", "aiDailyLimitFree", "eligibilityLimitFree", "updatedAt"]
+    },
+    "ResumeAnalysis": {
+      "title": "ResumeAnalysis",
+      "description": "Saved AI Resume Analyzer report for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fileName": { "type": "string", "maxLength": 180 },
+        "targetRole": { "type": "string", "maxLength": 140 },
+        "jobDescriptionSnippet": { "type": "string", "maxLength": 2000 },
+        "storagePath": { "type": "string", "maxLength": 300 },
+        "atsScore": { "type": "number" },
+        "keywordMatchScore": { "type": "number" },
+        "summaryFeedback": { "type": "string", "maxLength": 1500 },
+        "matchedKeywords": { "type": "array" },
+        "missingKeywords": { "type": "array" },
+        "sectionSuggestions": { "type": "array" },
+        "bulletImprovements": { "type": "array" },
+        "improvedSummary": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "fileName", "targetRole", "atsScore", "keywordMatchScore", "createdAt"]
+    },
+    "MockInterviewSession": {
+      "title": "MockInterviewSession",
+      "description": "User text-based AI Mock Interview Studio session & evaluation history.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "roleTitle": { "type": "string", "maxLength": 140 },
+        "difficulty": { "type": "string", "enum": ["Beginner", "Intermediate", "Advanced"] },
+        "durationMinutes": { "type": "number" },
+        "questionCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["in_progress", "completed"] },
+        "overallScore": { "type": "number" },
+        "messages": { "type": "array" },
+        "finalFeedback": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "roleTitle", "difficulty", "status", "overallScore", "messages", "createdAt", "updatedAt"]
+    },
+    "CareerRoadmap": {
+      "title": "CareerRoadmap",
+      "description": "User AI-generated career roadmap with interactive step progress.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "targetGoal": { "type": "string", "maxLength": 160 },
+        "currentLevel": { "type": "string", "maxLength": 80 },
+        "weeklyHours": { "type": "number" },
+        "overview": { "type": "string", "maxLength": 2000 },
+        "stages": { "type": "array" },
+        "weeklyPlan": { "type": "array" },
+        "completedStepIds": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "targetGoal", "stages", "completedStepIds", "createdAt", "updatedAt"]
+    },
+    "MockTest": {
+      "title": "MockTest",
+      "description": "Admin-managed competitive exam mock test (marked unofficial practice).",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 180 },
+        "examCategory": { "type": "string", "enum": ["SSC", "Railway", "Banking", "UPSC", "State Govt", "General"] },
+        "difficulty": { "type": "string", "enum": ["Beginner", "Intermediate", "Advanced"] },
+        "durationMinutes": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "negativeMarking": { "type": "number" },
+        "isUnofficialPractice": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+        "questions": { "type": "array" },
+        "description": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "examCategory", "difficulty", "durationMinutes", "totalMarks", "status", "questions", "createdAt", "updatedAt"]
+    },
+    "QuestionBankItem": {
+      "title": "QuestionBankItem",
+      "description": "Practice question bank item managed by admins.",
+      "type": "object",
+      "properties": {
+        "examCategory": { "type": "string", "enum": ["SSC", "Railway", "Banking", "UPSC", "State Govt", "General"] },
+        "topic": { "type": "string", "maxLength": 100 },
+        "difficulty": { "type": "string", "enum": ["Beginner", "Intermediate", "Advanced"] },
+        "questionText": { "type": "string", "maxLength": 1200 },
+        "options": { "type": "array" },
+        "correctIndex": { "type": "number" },
+        "explanation": { "type": "string", "maxLength": 1200 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["examCategory", "topic", "difficulty", "questionText", "options", "correctIndex", "isActive", "createdAt", "updatedAt"]
+    },
+    "MockTestAttempt": {
+      "title": "MockTestAttempt",
+      "description": "User mock test attempt and accuracy analytics.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "testId": { "type": "string", "maxLength": 128 },
+        "testTitle": { "type": "string", "maxLength": 180 },
+        "examCategory": { "type": "string", "maxLength": 60 },
+        "score": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "correctCount": { "type": "number" },
+        "wrongCount": { "type": "number" },
+        "unansweredCount": { "type": "number" },
+        "accuracyPercent": { "type": "number" },
+        "timeSpentSeconds": { "type": "number" },
+        "answers": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "testId", "testTitle", "score", "totalMarks", "accuracyPercent", "createdAt"]
+    },
+    "ExamEvent": {
+      "title": "ExamEvent",
+      "description": "Verified government exam calendar reference entry with official portal URL.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 180 },
+        "organization": { "type": "string", "maxLength": 160 },
+        "category": { "type": "string", "enum": ["UPSC", "SSC", "Banking", "Railway", "Engineering", "State Govt", "Defence", "Teaching"] },
+        "notificationStatus": { "type": "string", "enum": ["Official Calendar Reference", "Upcoming Cycle", "Active", "Closed"] },
+        "applicationStartDate": { "type": "string", "maxLength": 60 },
+        "lastDate": { "type": "string", "maxLength": 60 },
+        "examDate": { "type": "string", "maxLength": 60 },
+        "admitCardNote": { "type": "string", "maxLength": 200 },
+        "officialURL": { "type": "string", "maxLength": 500 },
+        "lastVerifiedAt": { "type": "string", "maxLength": 60 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "organization", "category", "notificationStatus", "officialURL", "lastVerifiedAt", "isPublished", "createdAt", "updatedAt"]
+    },
+    "SavedExamReminder": {
+      "title": "SavedExamReminder",
+      "description": "User saved exam calendar reminder.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "examId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 180 },
+        "organization": { "type": "string", "maxLength": 160 },
+        "lastDate": { "type": "string", "maxLength": 60 },
+        "examDate": { "type": "string", "maxLength": 60 },
+        "officialURL": { "type": "string", "maxLength": 500 },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "examId", "title", "organization", "officialURL", "savedAt"]
+    },
+    "LearningPath": {
+      "title": "LearningPath",
+      "description": "Skills & Learning Hub path with structured lessons and practice exercises.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 160 },
+        "category": { "type": "string", "maxLength": 80 },
+        "level": { "type": "string", "enum": ["Beginner", "Intermediate", "Advanced"] },
+        "description": { "type": "string", "maxLength": 1000 },
+        "estimatedHours": { "type": "number" },
+        "lessons": { "type": "array" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "category", "level", "lessons", "isPublished", "createdAt", "updatedAt"]
+    },
+    "LearningProgress": {
+      "title": "LearningProgress",
+      "description": "User lesson completion progress in Skills & Learning Hub.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "pathId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "pathTitle": { "type": "string", "maxLength": 160 },
+        "completedLessonIds": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "pathId", "pathTitle", "completedLessonIds", "updatedAt"]
+    },
+    "JobComparison": {
+      "title": "JobComparison",
+      "description": "Saved side-by-side job comparison set for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 160 },
+        "jobIds": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "jobIds", "createdAt"]
+    },
+    "UserFeedback": {
+      "title": "UserFeedback",
+      "description": "Genuine user product feedback managed by admins.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "enum": ["Feature Request", "Bug Report", "Content Accuracy", "General Feedback"] },
+        "rating": { "type": "number" },
+        "message": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["open", "reviewed", "resolved"] },
+        "adminNote": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "email", "category", "rating", "message", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": { "$ref": "#/entities/UserProfile" }, "description": "Private user profile data." },
+    "/admins/{uid}": { "schema": { "$ref": "#/entities/AdminRecord" }, "description": "Server-controlled admin registry." },
+    "/jobs/{jobId}": { "schema": { "$ref": "#/entities/JobListing" }, "description": "Job opportunities catalog." },
+    "/categories/{categoryId}": { "schema": { "$ref": "#/entities/JobCategory" }, "description": "Job category definitions." },
+    "/users/{uid}/savedJobs/{jobId}": { "schema": { "$ref": "#/entities/SavedJob" }, "description": "User saved jobs." },
+    "/users/{uid}/applications/{applicationId}": { "schema": { "$ref": "#/entities/ApplicationRecord" }, "description": "User tracked job applications." },
+    "/users/{uid}/eligibilityChecks/{checkId}": { "schema": { "$ref": "#/entities/EligibilityCheck" }, "description": "User eligibility history." },
+    "/users/{uid}/resumes/{resumeId}": { "schema": { "$ref": "#/entities/ResumeRecord" }, "description": "User resumes created in Resume Studio." },
+    "/users/{uid}/documents/{docId}": { "schema": { "$ref": "#/entities/DocumentChecklist" }, "description": "User document checklists." },
+    "/users/{uid}/aiChats/{chatId}": { "schema": { "$ref": "#/entities/AIChatSession" }, "description": "User AI Career Assistant conversations." },
+    "/users/{uid}/notifications/{notificationId}": { "schema": { "$ref": "#/entities/NotificationItem" }, "description": "User in-app notifications." },
+    "/users/{uid}/resumeAnalyses/{analysisId}": { "schema": { "$ref": "#/entities/ResumeAnalysis" }, "description": "User AI Resume Analyzer reports." },
+    "/users/{uid}/mockInterviews/{interviewId}": { "schema": { "$ref": "#/entities/MockInterviewSession" }, "description": "User AI Mock Interview Studio sessions." },
+    "/users/{uid}/careerRoadmaps/{roadmapId}": { "schema": { "$ref": "#/entities/CareerRoadmap" }, "description": "User Career Roadmap progress." },
+    "/users/{uid}/mockTestAttempts/{attemptId}": { "schema": { "$ref": "#/entities/MockTestAttempt" }, "description": "User Mock Test attempts and scores." },
+    "/users/{uid}/savedExams/{examId}": { "schema": { "$ref": "#/entities/SavedExamReminder" }, "description": "User saved exam reminders." },
+    "/users/{uid}/learningProgress/{progressId}": { "schema": { "$ref": "#/entities/LearningProgress" }, "description": "User learning hub completion state." },
+    "/users/{uid}/jobComparisons/{comparisonId}": { "schema": { "$ref": "#/entities/JobComparison" }, "description": "User saved job comparison sets." },
+    "/mockTests/{testId}": { "schema": { "$ref": "#/entities/MockTest" }, "description": "Published competitive exam mock tests." },
+    "/questionBank/{questionId}": { "schema": { "$ref": "#/entities/QuestionBankItem" }, "description": "Practice question bank managed by admins." },
+    "/examEvents/{eventId}": { "schema": { "$ref": "#/entities/ExamEvent" }, "description": "Government exam calendar reference events." },
+    "/learningPaths/{pathId}": { "schema": { "$ref": "#/entities/LearningPath" }, "description": "Skills & Learning Hub published paths." },
+    "/jobReports/{reportId}": { "schema": { "$ref": "#/entities/JobReport" }, "description": "Job accuracy & scam awareness reports." },
+    "/supportTickets/{ticketId}": { "schema": { "$ref": "#/entities/SupportTicket" }, "description": "User support inquiries." },
+    "/userFeedback/{feedbackId}": { "schema": { "$ref": "#/entities/UserFeedback" }, "description": "User product feedback records." },
+    "/subscriptions/{uid}": { "schema": { "$ref": "#/entities/SubscriptionRecord" }, "description": "Subscription tier and usage records." },
+    "/aiUsage/{usageId}": { "schema": { "$ref": "#/entities/AIUsageLog" }, "description": "AI usage telemetry for admin analytics." },
+    "/adminAuditLogs/{logId}": { "schema": { "$ref": "#/entities/AdminAuditLog" }, "description": "Immutable admin audit logs." },
+    "/platformSettings/{settingId}": { "schema": { "$ref": "#/entities/PlatformSetting" }, "description": "Platform-wide public settings and notices." }
+  }
+}

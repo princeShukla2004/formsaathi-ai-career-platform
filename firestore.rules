@@ -1,0 +1,965 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function isAdmin() {
+      return isVerifiedUser() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'prince.nuv.bca@gmail.com'
+      );
+    }
+    function isNonEmptyString(val, maxLen) {
+      return val is string && val.size() >= 1 && val.size() <= maxLen;
+    }
+    function isOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+    function isBoundedStringList(data, field, maxItems) {
+      return !(field in data) || (
+        data[field] is list &&
+        data[field].size() <= maxItems &&
+        (data[field].size() == 0 || data[field][0] is string)
+      );
+    }
+
+    // --- Entity Validation Helpers ---
+    function isValidUserProfile(data, uid) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'preferredLanguage', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'name', 'email', 'photoURL', 'phone', 'location', 'linkedin',
+          'portfolio', 'summary', 'certifications', 'preferredLanguage', 'education',
+          'qualification', 'skills', 'experience', 'preferredLocations',
+          'preferredCategories', 'status', 'consentGiven', 'notificationPrefs',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid == uid
+        && isNonEmptyString(data.name, 120)
+        && isNonEmptyString(data.email, 200)
+        && data.preferredLanguage in ['en', 'hi']
+        && data.status in ['active', 'suspended']
+        && isOptionalString(data, 'photoURL', 500)
+        && isOptionalString(data, 'phone', 30)
+        && isOptionalString(data, 'location', 120)
+        && isOptionalString(data, 'linkedin', 250)
+        && isOptionalString(data, 'portfolio', 250)
+        && isOptionalString(data, 'summary', 2000)
+        && isBoundedStringList(data, 'certifications', 30)
+        && isOptionalString(data, 'education', 200)
+        && isOptionalString(data, 'qualification', 120)
+        && isBoundedStringList(data, 'skills', 40)
+        && isBoundedStringList(data, 'preferredLocations', 20)
+        && isBoundedStringList(data, 'preferredCategories', 20)
+        && (!('experience' in data) || (data.experience is number && data.experience >= 0 && data.experience <= 60))
+        && (!('consentGiven' in data) || data.consentGiven is bool)
+        && (!('notificationPrefs' in data) || data.notificationPrefs is map)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data, uid) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'grantedBy', 'createdAt'])
+        && data.uid == uid
+        && isNonEmptyString(data.email, 200)
+        && isOptionalString(data, 'grantedBy', 128)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidJobListing(data) {
+      return data.keys().hasAll([
+          'title', 'organization', 'category', 'sector', 'location',
+          'officialSourceURL', 'applicationURL', 'verificationStatus', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'title', 'organization', 'organizationLogo', 'category', 'sector',
+          'location', 'employmentType', 'workMode', 'experience', 'qualifications',
+          'eligibilityRules', 'description', 'responsibilities', 'salary',
+          'importantDates', 'applicationFee', 'requiredDocuments', 'selectionProcess',
+          'applicationInstructions', 'officialSourceURL', 'applicationURL',
+          'sourceName', 'verificationStatus', 'verifiedBy', 'verifiedAt',
+          'expiresAt', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && isNonEmptyString(data.title, 180)
+        && isNonEmptyString(data.organization, 160)
+        && isNonEmptyString(data.category, 80)
+        && data.sector in ['government', 'private', 'internship']
+        && isNonEmptyString(data.location, 120)
+        && isNonEmptyString(data.officialSourceURL, 500)
+        && isNonEmptyString(data.applicationURL, 500)
+        && data.verificationStatus in ['pending', 'verified', 'rejected', 'expired']
+        && isOptionalString(data, 'id', 128)
+        && isOptionalString(data, 'organizationLogo', 500)
+        && isOptionalString(data, 'employmentType', 60)
+        && (!('workMode' in data) || data.workMode in ['onsite', 'remote', 'hybrid'])
+        && isOptionalString(data, 'experience', 80)
+        && isBoundedStringList(data, 'qualifications', 20)
+        && (!('eligibilityRules' in data) || data.eligibilityRules is map)
+        && isOptionalString(data, 'description', 6000)
+        && isBoundedStringList(data, 'responsibilities', 30)
+        && isOptionalString(data, 'salary', 160)
+        && (!('importantDates' in data) || data.importantDates is map)
+        && isOptionalString(data, 'applicationFee', 300)
+        && isBoundedStringList(data, 'requiredDocuments', 25)
+        && isBoundedStringList(data, 'selectionProcess', 15)
+        && isOptionalString(data, 'applicationInstructions', 3000)
+        && isOptionalString(data, 'sourceName', 160)
+        && isOptionalString(data, 'verifiedBy', 128)
+        && (!('verifiedAt' in data) || data.verifiedAt is timestamp)
+        && isOptionalString(data, 'expiresAt', 40)
+        && isOptionalString(data, 'createdBy', 128)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['slug', 'name', 'sector', 'isActive', 'createdAt'])
+        && data.keys().hasOnly(['slug', 'name', 'nameHi', 'sector', 'description', 'isActive', 'createdAt'])
+        && isValidId(data.slug)
+        && isNonEmptyString(data.name, 80)
+        && isOptionalString(data, 'nameHi', 100)
+        && data.sector in ['government', 'private', 'internship', 'all']
+        && isOptionalString(data, 'description', 300)
+        && data.isActive is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSavedJob(data, uid, jobId) {
+      return data.keys().hasAll(['userId', 'jobId', 'jobTitle', 'organization', 'savedAt'])
+        && data.keys().hasOnly(['userId', 'jobId', 'jobTitle', 'organization', 'deadline', 'savedAt'])
+        && data.userId == uid
+        && data.jobId == jobId
+        && isNonEmptyString(data.jobTitle, 180)
+        && isNonEmptyString(data.organization, 160)
+        && isOptionalString(data, 'deadline', 40)
+        && data.savedAt is timestamp;
+    }
+
+    function isValidApplication(data, uid) {
+      return data.keys().hasAll(['userId', 'jobTitle', 'organization', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'userId', 'jobId', 'jobTitle', 'organization', 'status', 'appliedAt',
+          'deadline', 'interviewDate', 'followUpDate', 'notes', 'applicationURL',
+          'createdAt', 'updatedAt'
+        ])
+        && data.userId == uid
+        && isOptionalString(data, 'jobId', 128)
+        && isNonEmptyString(data.jobTitle, 180)
+        && isNonEmptyString(data.organization, 160)
+        && data.status in ['Saved', 'Planning to Apply', 'Applied', 'Assessment', 'Interview', 'Selected', 'Rejected', 'Withdrawn']
+        && isOptionalString(data, 'appliedAt', 40)
+        && isOptionalString(data, 'deadline', 40)
+        && isOptionalString(data, 'interviewDate', 40)
+        && isOptionalString(data, 'followUpDate', 40)
+        && isOptionalString(data, 'notes', 2000)
+        && isOptionalString(data, 'applicationURL', 500)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEligibilityCheck(data, uid) {
+      return data.keys().hasAll(['userId', 'jobId', 'jobTitle', 'result', 'checkedAt'])
+        && data.keys().hasOnly([
+          'userId', 'jobId', 'jobTitle', 'result', 'matchedRequirements',
+          'unmatchedRequirements', 'missingInformation', 'sourceReference', 'checkedAt'
+        ])
+        && data.userId == uid
+        && isNonEmptyString(data.jobId, 128)
+        && isNonEmptyString(data.jobTitle, 180)
+        && data.result in ['Eligible', 'Not Eligible', 'Needs Verification']
+        && isBoundedStringList(data, 'matchedRequirements', 30)
+        && isBoundedStringList(data, 'unmatchedRequirements', 30)
+        && isBoundedStringList(data, 'missingInformation', 30)
+        && isOptionalString(data, 'sourceReference', 500)
+        && data.checkedAt is timestamp;
+    }
+
+    function isValidResume(data, uid) {
+      return data.keys().hasAll(['userId', 'title', 'template', 'personalDetails', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'userId', 'title', 'template', 'personalDetails', 'summary', 'education',
+          'experience', 'internships', 'projects', 'skills', 'certifications',
+          'languages', 'achievements', 'sectionOrder', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == uid
+        && isNonEmptyString(data.title, 120)
+        && data.template in ['modern', 'minimal_ats', 'fresh_graduate', 'technical']
+        && data.personalDetails is map
+        && isOptionalString(data, 'summary', 2000)
+        && (!('education' in data) || (data.education is list && data.education.size() <= 15))
+        && (!('experience' in data) || (data.experience is list && data.experience.size() <= 20))
+        && (!('internships' in data) || (data.internships is list && data.internships.size() <= 15))
+        && (!('projects' in data) || (data.projects is list && data.projects.size() <= 20))
+        && isBoundedStringList(data, 'skills', 50)
+        && isBoundedStringList(data, 'certifications', 30)
+        && isBoundedStringList(data, 'languages', 20)
+        && isBoundedStringList(data, 'achievements', 30)
+        && isBoundedStringList(data, 'sectionOrder', 15)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDocumentChecklist(data, uid) {
+      return data.keys().hasAll(['userId', 'title', 'items', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'title', 'jobId', 'items', 'createdAt', 'updatedAt'])
+        && data.userId == uid
+        && isNonEmptyString(data.title, 160)
+        && isOptionalString(data, 'jobId', 128)
+        && data.items is list && data.items.size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAIChat(data, uid) {
+      return data.keys().hasAll(['userId', 'title', 'language', 'messages', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'title', 'language', 'jobId', 'messages', 'createdAt', 'updatedAt'])
+        && data.userId == uid
+        && isNonEmptyString(data.title, 160)
+        && data.language in ['en', 'hi']
+        && isOptionalString(data, 'jobId', 128)
+        && data.messages is list && data.messages.size() <= 100
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNotification(data, uid) {
+      return data.keys().hasAll(['userId', 'type', 'title', 'message', 'read', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'type', 'title', 'message', 'link', 'read', 'createdAt'])
+        && data.userId == uid
+        && data.type in ['matching_job', 'deadline', 'interview', 'follow_up', 'resume', 'account', 'exam_reminder']
+        && isNonEmptyString(data.title, 160)
+        && isNonEmptyString(data.message, 600)
+        && isOptionalString(data, 'link', 300)
+        && data.read is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidResumeAnalysis(data, uid) {
+      return data.keys().hasAll(['userId', 'fileName', 'targetRole', 'atsScore', 'keywordMatchScore', 'createdAt'])
+        && data.keys().hasOnly([
+          'userId', 'fileName', 'targetRole', 'jobDescriptionSnippet', 'storagePath',
+          'atsScore', 'keywordMatchScore', 'summaryFeedback', 'matchedKeywords',
+          'missingKeywords', 'sectionSuggestions', 'bulletImprovements', 'improvedSummary', 'createdAt'
+        ])
+        && data.userId == uid
+        && isNonEmptyString(data.fileName, 180)
+        && isNonEmptyString(data.targetRole, 140)
+        && isOptionalString(data, 'jobDescriptionSnippet', 2000)
+        && isOptionalString(data, 'storagePath', 300)
+        && data.atsScore is number && data.atsScore >= 0 && data.atsScore <= 100
+        && data.keywordMatchScore is number && data.keywordMatchScore >= 0 && data.keywordMatchScore <= 100
+        && isOptionalString(data, 'summaryFeedback', 1500)
+        && isBoundedStringList(data, 'matchedKeywords', 40)
+        && isBoundedStringList(data, 'missingKeywords', 40)
+        && (!('sectionSuggestions' in data) || (data.sectionSuggestions is list && data.sectionSuggestions.size() <= 15))
+        && isBoundedStringList(data, 'bulletImprovements', 20)
+        && isOptionalString(data, 'improvedSummary', 2000)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidMockInterview(data, uid) {
+      return data.keys().hasAll(['userId', 'roleTitle', 'difficulty', 'status', 'overallScore', 'messages', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'userId', 'roleTitle', 'difficulty', 'durationMinutes', 'questionCount',
+          'status', 'overallScore', 'messages', 'finalFeedback', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == uid
+        && isNonEmptyString(data.roleTitle, 140)
+        && data.difficulty in ['Beginner', 'Intermediate', 'Advanced']
+        && (!('durationMinutes' in data) || (data.durationMinutes is number && data.durationMinutes >= 1 && data.durationMinutes <= 120))
+        && (!('questionCount' in data) || (data.questionCount is number && data.questionCount >= 1 && data.questionCount <= 30))
+        && data.status in ['in_progress', 'completed']
+        && data.overallScore is number && data.overallScore >= 0 && data.overallScore <= 100
+        && data.messages is list && data.messages.size() <= 60
+        && (!('finalFeedback' in data) || data.finalFeedback is map)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCareerRoadmap(data, uid) {
+      return data.keys().hasAll(['userId', 'targetGoal', 'stages', 'completedStepIds', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'userId', 'targetGoal', 'currentLevel', 'weeklyHours', 'overview',
+          'stages', 'weeklyPlan', 'completedStepIds', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == uid
+        && isNonEmptyString(data.targetGoal, 160)
+        && isOptionalString(data, 'currentLevel', 80)
+        && (!('weeklyHours' in data) || (data.weeklyHours is number && data.weeklyHours >= 1 && data.weeklyHours <= 100))
+        && isOptionalString(data, 'overview', 2000)
+        && data.stages is list && data.stages.size() <= 10
+        && isBoundedStringList(data, 'weeklyPlan', 14)
+        && isBoundedStringList(data, 'completedStepIds', 100)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMockTestAttempt(data, uid) {
+      return data.keys().hasAll(['userId', 'testId', 'testTitle', 'score', 'totalMarks', 'accuracyPercent', 'createdAt'])
+        && data.keys().hasOnly([
+          'userId', 'testId', 'testTitle', 'examCategory', 'score', 'totalMarks',
+          'correctCount', 'wrongCount', 'unansweredCount', 'accuracyPercent',
+          'timeSpentSeconds', 'answers', 'createdAt'
+        ])
+        && data.userId == uid
+        && isNonEmptyString(data.testId, 128)
+        && isNonEmptyString(data.testTitle, 180)
+        && isOptionalString(data, 'examCategory', 60)
+        && data.score is number && data.score >= -500 && data.score <= 1000
+        && data.totalMarks is number && data.totalMarks >= 1 && data.totalMarks <= 1000
+        && (!('correctCount' in data) || (data.correctCount is number && data.correctCount >= 0 && data.correctCount <= 500))
+        && (!('wrongCount' in data) || (data.wrongCount is number && data.wrongCount >= 0 && data.wrongCount <= 500))
+        && (!('unansweredCount' in data) || (data.unansweredCount is number && data.unansweredCount >= 0 && data.unansweredCount <= 500))
+        && data.accuracyPercent is number && data.accuracyPercent >= 0 && data.accuracyPercent <= 100
+        && (!('timeSpentSeconds' in data) || (data.timeSpentSeconds is number && data.timeSpentSeconds >= 0 && data.timeSpentSeconds <= 43200))
+        && (!('answers' in data) || data.answers is map)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSavedExamReminder(data, uid, examId) {
+      return data.keys().hasAll(['userId', 'examId', 'title', 'organization', 'officialURL', 'savedAt'])
+        && data.keys().hasOnly(['userId', 'examId', 'title', 'organization', 'lastDate', 'examDate', 'officialURL', 'savedAt'])
+        && data.userId == uid
+        && data.examId == examId
+        && isNonEmptyString(data.title, 180)
+        && isNonEmptyString(data.organization, 160)
+        && isOptionalString(data, 'lastDate', 60)
+        && isOptionalString(data, 'examDate', 60)
+        && isNonEmptyString(data.officialURL, 500)
+        && data.savedAt is timestamp;
+    }
+
+    function isValidLearningProgress(data, uid, pathId) {
+      return data.keys().hasAll(['userId', 'pathId', 'pathTitle', 'completedLessonIds', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'pathId', 'pathTitle', 'completedLessonIds', 'updatedAt'])
+        && data.userId == uid
+        && data.pathId == pathId
+        && isNonEmptyString(data.pathTitle, 160)
+        && isBoundedStringList(data, 'completedLessonIds', 100)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidJobComparison(data, uid) {
+      return data.keys().hasAll(['userId', 'title', 'jobIds', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'title', 'jobIds', 'createdAt'])
+        && data.userId == uid
+        && isNonEmptyString(data.title, 160)
+        && data.jobIds is list && data.jobIds.size() >= 2 && data.jobIds.size() <= 3
+        && data.createdAt is timestamp;
+    }
+
+    function isValidMockTest(data) {
+      return data.keys().hasAll(['title', 'examCategory', 'difficulty', 'durationMinutes', 'totalMarks', 'status', 'questions', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'title', 'examCategory', 'difficulty', 'durationMinutes', 'totalMarks',
+          'negativeMarking', 'isUnofficialPractice', 'status', 'questions', 'description',
+          'createdAt', 'updatedAt'
+        ])
+        && isNonEmptyString(data.title, 180)
+        && data.examCategory in ['SSC', 'Railway', 'Banking', 'UPSC', 'State Govt', 'General']
+        && data.difficulty in ['Beginner', 'Intermediate', 'Advanced']
+        && data.durationMinutes is number && data.durationMinutes >= 1 && data.durationMinutes <= 300
+        && data.totalMarks is number && data.totalMarks >= 1 && data.totalMarks <= 1000
+        && (!('negativeMarking' in data) || (data.negativeMarking is number && data.negativeMarking >= 0 && data.negativeMarking <= 5))
+        && (!('isUnofficialPractice' in data) || data.isUnofficialPractice is bool)
+        && data.status in ['draft', 'published', 'archived']
+        && data.questions is list && data.questions.size() <= 150
+        && isOptionalString(data, 'description', 1000)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidQuestionBankItem(data) {
+      return data.keys().hasAll(['examCategory', 'topic', 'difficulty', 'questionText', 'options', 'correctIndex', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'examCategory', 'topic', 'difficulty', 'questionText', 'options',
+          'correctIndex', 'explanation', 'isActive', 'createdAt', 'updatedAt'
+        ])
+        && data.examCategory in ['SSC', 'Railway', 'Banking', 'UPSC', 'State Govt', 'General']
+        && isNonEmptyString(data.topic, 100)
+        && data.difficulty in ['Beginner', 'Intermediate', 'Advanced']
+        && isNonEmptyString(data.questionText, 1200)
+        && data.options is list && data.options.size() == 4
+        && data.correctIndex is number && data.correctIndex >= 0 && data.correctIndex <= 3
+        && isOptionalString(data, 'explanation', 1200)
+        && data.isActive is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidExamEvent(data) {
+      return data.keys().hasAll(['title', 'organization', 'category', 'notificationStatus', 'officialURL', 'lastVerifiedAt', 'isPublished', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'title', 'organization', 'category', 'notificationStatus',
+          'applicationStartDate', 'lastDate', 'examDate', 'admitCardNote',
+          'officialURL', 'lastVerifiedAt', 'notes', 'isPublished', 'createdAt', 'updatedAt'
+        ])
+        && isNonEmptyString(data.title, 180)
+        && isNonEmptyString(data.organization, 160)
+        && data.category in ['UPSC', 'SSC', 'Banking', 'Railway', 'Engineering', 'State Govt', 'Defence', 'Teaching']
+        && data.notificationStatus in ['Official Calendar Reference', 'Upcoming Cycle', 'Active', 'Closed']
+        && isOptionalString(data, 'applicationStartDate', 60)
+        && isOptionalString(data, 'lastDate', 60)
+        && isOptionalString(data, 'examDate', 60)
+        && isOptionalString(data, 'admitCardNote', 200)
+        && isNonEmptyString(data.officialURL, 500)
+        && isNonEmptyString(data.lastVerifiedAt, 60)
+        && isOptionalString(data, 'notes', 1000)
+        && data.isPublished is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLearningPath(data) {
+      return data.keys().hasAll(['title', 'category', 'level', 'lessons', 'isPublished', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'title', 'category', 'level', 'description', 'estimatedHours',
+          'lessons', 'isPublished', 'createdAt', 'updatedAt'
+        ])
+        && isNonEmptyString(data.title, 160)
+        && isNonEmptyString(data.category, 80)
+        && data.level in ['Beginner', 'Intermediate', 'Advanced']
+        && isOptionalString(data, 'description', 1000)
+        && (!('estimatedHours' in data) || (data.estimatedHours is number && data.estimatedHours >= 1 && data.estimatedHours <= 500))
+        && data.lessons is list && data.lessons.size() <= 50
+        && data.isPublished is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidJobReport(data) {
+      return data.keys().hasAll(['jobId', 'reporterId', 'reason', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'jobId', 'jobTitle', 'reporterId', 'reason', 'warningIndicators',
+          'adminNote', 'status', 'createdAt', 'updatedAt'
+        ])
+        && isNonEmptyString(data.jobId, 128)
+        && isOptionalString(data, 'jobTitle', 180)
+        && data.reporterId == request.auth.uid
+        && isNonEmptyString(data.reason, 500)
+        && isBoundedStringList(data, 'warningIndicators', 10)
+        && isOptionalString(data, 'adminNote', 500)
+        && data.status in ['open', 'reviewed', 'resolved', 'dismissed']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSupportTicket(data) {
+      return data.keys().hasAll(['name', 'email', 'subject', 'message', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'name', 'email', 'subject', 'message', 'status', 'createdAt', 'updatedAt'])
+        && isOptionalString(data, 'userId', 128)
+        && isNonEmptyString(data.name, 120)
+        && isNonEmptyString(data.email, 200)
+        && isNonEmptyString(data.subject, 180)
+        && isNonEmptyString(data.message, 3000)
+        && data.status in ['open', 'in_progress', 'resolved']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserFeedback(data) {
+      return data.keys().hasAll(['userId', 'name', 'email', 'category', 'rating', 'message', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'userId', 'name', 'email', 'category', 'rating', 'message',
+          'status', 'adminNote', 'createdAt', 'updatedAt'
+        ])
+        && isNonEmptyString(data.userId, 128)
+        && isNonEmptyString(data.name, 120)
+        && isNonEmptyString(data.email, 200)
+        && data.category in ['Feature Request', 'Bug Report', 'Content Accuracy', 'General Feedback']
+        && data.rating is number && data.rating >= 1 && data.rating <= 5
+        && isNonEmptyString(data.message, 2000)
+        && data.status in ['open', 'reviewed', 'resolved']
+        && isOptionalString(data, 'adminNote', 500)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSubscription(data, uid) {
+      return data.keys().hasAll(['userId', 'plan', 'status', 'aiQueriesUsed', 'eligibilityChecksUsed', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'plan', 'status', 'aiQueriesUsed', 'eligibilityChecksUsed', 'updatedAt'])
+        && data.userId == uid
+        && data.plan in ['free', 'pro']
+        && data.status in ['active', 'test_pending', 'canceled']
+        && data.aiQueriesUsed is number && data.aiQueriesUsed >= 0 && data.aiQueriesUsed <= 100000
+        && data.eligibilityChecksUsed is number && data.eligibilityChecksUsed >= 0 && data.eligibilityChecksUsed <= 100000
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAIUsageLog(data) {
+      return data.keys().hasAll(['userId', 'feature', 'language', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'feature', 'language', 'createdAt'])
+        && data.userId == request.auth.uid
+        && data.feature in ['assistant', 'resume_assist', 'resume_analyzer', 'mock_interview', 'career_roadmap', 'form_assistant']
+        && data.language in ['en', 'hi']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidAdminAuditLog(data) {
+      return data.keys().hasAll(['adminUid', 'action', 'targetId', 'createdAt'])
+        && data.keys().hasOnly(['adminUid', 'adminEmail', 'action', 'targetId', 'details', 'createdAt'])
+        && data.adminUid == request.auth.uid
+        && isOptionalString(data, 'adminEmail', 200)
+        && isNonEmptyString(data.action, 120)
+        && isNonEmptyString(data.targetId, 128)
+        && isOptionalString(data, 'details', 500)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPlatformSetting(data) {
+      return data.keys().hasAll(['showAnnouncement', 'aiDailyLimitFree', 'eligibilityLimitFree', 'updatedAt'])
+        && data.keys().hasOnly(['announcementBanner', 'showAnnouncement', 'aiDailyLimitFree', 'eligibilityLimitFree', 'updatedAt'])
+        && isOptionalString(data, 'announcementBanner', 300)
+        && data.showAnnouncement is bool
+        && data.aiDailyLimitFree is number && data.aiDailyLimitFree >= 0 && data.aiDailyLimitFree <= 1000
+        && data.eligibilityLimitFree is number && data.eligibilityLimitFree >= 0 && data.eligibilityLimitFree <= 1000
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Connection test document
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // Admin registry
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isValidId(uid) && isAdmin() && isValidAdminRecord(incoming(), uid)
+        && incoming().createdAt == request.time;
+      allow delete: if isValidId(uid) && isAdmin() && uid != request.auth.uid;
+    }
+
+    // User Profiles & Private Subcollections
+    match /users/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(uid) && isVerifiedUser() && isOwner(uid)
+        && isValidUserProfile(incoming(), uid)
+        && incoming().status == 'active'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(uid) && isVerifiedUser() && isValidUserProfile(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+          (
+            isOwner(uid) &&
+            existing().status == 'active' &&
+            incoming().status == existing().status &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'photoURL', 'phone', 'location', 'linkedin', 'portfolio',
+              'summary', 'certifications', 'preferredLanguage', 'education',
+              'qualification', 'skills', 'experience', 'preferredLocations',
+              'preferredCategories', 'consentGiven', 'notificationPrefs', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(uid) && isVerifiedUser() && isOwner(uid);
+
+      match /savedJobs/{jobId} {
+        allow get: if isValidId(uid) && isValidId(jobId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(jobId) && isVerifiedUser() && isOwner(uid)
+          && isValidSavedJob(incoming(), uid, jobId)
+          && incoming().savedAt == request.time;
+        allow delete: if isValidId(uid) && isValidId(jobId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /applications/{applicationId} {
+        allow get: if isValidId(uid) && isValidId(applicationId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(applicationId) && isVerifiedUser() && isOwner(uid)
+          && isValidApplication(incoming(), uid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(uid) && isValidId(applicationId) && isVerifiedUser() && isOwner(uid)
+          && isValidApplication(incoming(), uid)
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'appliedAt', 'deadline', 'interviewDate', 'followUpDate',
+            'notes', 'applicationURL', 'updatedAt'
+          ]);
+        allow delete: if isValidId(uid) && isValidId(applicationId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /eligibilityChecks/{checkId} {
+        allow get: if isValidId(uid) && isValidId(checkId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(checkId) && isVerifiedUser() && isOwner(uid)
+          && isValidEligibilityCheck(incoming(), uid)
+          && incoming().checkedAt == request.time;
+        allow delete: if isValidId(uid) && isValidId(checkId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /resumes/{resumeId} {
+        allow get: if isValidId(uid) && isValidId(resumeId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(resumeId) && isVerifiedUser() && isOwner(uid)
+          && isValidResume(incoming(), uid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(uid) && isValidId(resumeId) && isVerifiedUser() && isOwner(uid)
+          && isValidResume(incoming(), uid)
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'template', 'personalDetails', 'summary', 'education',
+            'experience', 'internships', 'projects', 'skills', 'certifications',
+            'languages', 'achievements', 'sectionOrder', 'updatedAt'
+          ]);
+        allow delete: if isValidId(uid) && isValidId(resumeId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /documents/{docId} {
+        allow get: if isValidId(uid) && isValidId(docId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(docId) && isVerifiedUser() && isOwner(uid)
+          && isValidDocumentChecklist(incoming(), uid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(uid) && isValidId(docId) && isVerifiedUser() && isOwner(uid)
+          && isValidDocumentChecklist(incoming(), uid)
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'items', 'updatedAt']);
+        allow delete: if isValidId(uid) && isValidId(docId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /aiChats/{chatId} {
+        allow get: if isValidId(uid) && isValidId(chatId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(chatId) && isVerifiedUser() && isOwner(uid)
+          && isValidAIChat(incoming(), uid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(uid) && isValidId(chatId) && isVerifiedUser() && isOwner(uid)
+          && isValidAIChat(incoming(), uid)
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'language', 'messages', 'updatedAt']);
+        allow delete: if isValidId(uid) && isValidId(chatId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /notifications/{notificationId} {
+        allow get: if isValidId(uid) && isValidId(notificationId) && (isOwner(uid) || isAdmin());
+        allow list: if isValidId(uid) && (isOwner(uid) || isAdmin()) && resource.data.userId == uid;
+        allow create: if isValidId(uid) && isValidId(notificationId)
+          && (isOwner(uid) || isAdmin())
+          && isVerifiedUser()
+          && isValidNotification(incoming(), uid)
+          && incoming().createdAt == request.time;
+        allow update: if isValidId(uid) && isValidId(notificationId) && isVerifiedUser() && isOwner(uid)
+          && isValidNotification(incoming(), uid)
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+        allow delete: if isValidId(uid) && isValidId(notificationId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /resumeAnalyses/{analysisId} {
+        allow get: if isValidId(uid) && isValidId(analysisId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(analysisId) && isVerifiedUser() && isOwner(uid)
+          && isValidResumeAnalysis(incoming(), uid)
+          && incoming().createdAt == request.time;
+        allow delete: if isValidId(uid) && isValidId(analysisId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /mockInterviews/{interviewId} {
+        allow get: if isValidId(uid) && isValidId(interviewId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(interviewId) && isVerifiedUser() && isOwner(uid)
+          && isValidMockInterview(incoming(), uid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(uid) && isValidId(interviewId) && isVerifiedUser() && isOwner(uid)
+          && isValidMockInterview(incoming(), uid)
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'overallScore', 'messages', 'finalFeedback', 'updatedAt']);
+        allow delete: if isValidId(uid) && isValidId(interviewId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /careerRoadmaps/{roadmapId} {
+        allow get: if isValidId(uid) && isValidId(roadmapId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(roadmapId) && isVerifiedUser() && isOwner(uid)
+          && isValidCareerRoadmap(incoming(), uid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(uid) && isValidId(roadmapId) && isVerifiedUser() && isOwner(uid)
+          && isValidCareerRoadmap(incoming(), uid)
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['completedStepIds', 'stages', 'weeklyPlan', 'updatedAt']);
+        allow delete: if isValidId(uid) && isValidId(roadmapId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /mockTestAttempts/{attemptId} {
+        allow get: if isValidId(uid) && isValidId(attemptId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(attemptId) && isVerifiedUser() && isOwner(uid)
+          && isValidMockTestAttempt(incoming(), uid)
+          && incoming().createdAt == request.time;
+        allow delete: if isValidId(uid) && isValidId(attemptId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /savedExams/{examId} {
+        allow get: if isValidId(uid) && isValidId(examId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(examId) && isVerifiedUser() && isOwner(uid)
+          && isValidSavedExamReminder(incoming(), uid, examId)
+          && incoming().savedAt == request.time;
+        allow delete: if isValidId(uid) && isValidId(examId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /learningProgress/{progressId} {
+        allow get: if isValidId(uid) && isValidId(progressId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(progressId) && isVerifiedUser() && isOwner(uid)
+          && isValidLearningProgress(incoming(), uid, progressId)
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(uid) && isValidId(progressId) && isVerifiedUser() && isOwner(uid)
+          && isValidLearningProgress(incoming(), uid, progressId)
+          && incoming().userId == existing().userId
+          && incoming().pathId == existing().pathId
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['completedLessonIds', 'updatedAt']);
+        allow delete: if isValidId(uid) && isValidId(progressId) && isVerifiedUser() && isOwner(uid);
+      }
+
+      match /jobComparisons/{comparisonId} {
+        allow get: if isValidId(uid) && isValidId(comparisonId) && isOwner(uid);
+        allow list: if isValidId(uid) && isOwner(uid) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(uid) && isValidId(comparisonId) && isVerifiedUser() && isOwner(uid)
+          && isValidJobComparison(incoming(), uid)
+          && incoming().createdAt == request.time;
+        allow delete: if isValidId(uid) && isValidId(comparisonId) && isVerifiedUser() && isOwner(uid);
+      }
+    }
+
+    // Jobs Catalog
+    match /jobs/{jobId} {
+      allow get: if isValidId(jobId) && (existing().verificationStatus == 'verified' || isAdmin());
+      allow list: if resource.data.verificationStatus == 'verified' || isAdmin();
+      allow create: if isValidId(jobId) && isAdmin()
+        && isValidJobListing(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(jobId) && isAdmin()
+        && isValidJobListing(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(jobId) && isAdmin();
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow get: if isValidId(categoryId);
+      allow list: if resource.data.isActive == true || isAdmin();
+      allow create: if isValidId(categoryId) && isAdmin()
+        && isValidCategory(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(categoryId) && isAdmin()
+        && isValidCategory(incoming())
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(categoryId) && isAdmin();
+    }
+
+    // Mock Tests Catalog
+    match /mockTests/{testId} {
+      allow get: if isValidId(testId) && (existing().status == 'published' || isAdmin());
+      allow list: if resource.data.status == 'published' || isAdmin();
+      allow create: if isValidId(testId) && isAdmin()
+        && isValidMockTest(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(testId) && isAdmin()
+        && isValidMockTest(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(testId) && isAdmin();
+    }
+
+    // Question Bank
+    match /questionBank/{questionId} {
+      allow get: if isValidId(questionId) && (existing().isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isAdmin();
+      allow create: if isValidId(questionId) && isAdmin()
+        && isValidQuestionBankItem(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(questionId) && isAdmin()
+        && isValidQuestionBankItem(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(questionId) && isAdmin();
+    }
+
+    // Exam Calendar Events
+    match /examEvents/{eventId} {
+      allow get: if isValidId(eventId) && (existing().isPublished == true || isAdmin());
+      allow list: if resource.data.isPublished == true || isAdmin();
+      allow create: if isValidId(eventId) && isAdmin()
+        && isValidExamEvent(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(eventId) && isAdmin()
+        && isValidExamEvent(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(eventId) && isAdmin();
+    }
+
+    // Skills & Learning Hub Paths
+    match /learningPaths/{pathId} {
+      allow get: if isValidId(pathId) && (existing().isPublished == true || isAdmin());
+      allow list: if resource.data.isPublished == true || isAdmin();
+      allow create: if isValidId(pathId) && isAdmin()
+        && isValidLearningPath(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(pathId) && isAdmin()
+        && isValidLearningPath(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(pathId) && isAdmin();
+    }
+
+    // Job Reports
+    match /jobReports/{reportId} {
+      allow get: if isValidId(reportId) && (isAdmin() || (isSignedIn() && existing().reporterId == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.reporterId == request.auth.uid);
+      allow create: if isValidId(reportId) && isVerifiedUser()
+        && isValidJobReport(incoming())
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(reportId) && isAdmin()
+        && isValidJobReport(incoming())
+        && incoming().reporterId == existing().reporterId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'updatedAt']);
+      allow delete: if isValidId(reportId) && isAdmin();
+    }
+
+    // Support Tickets
+    match /supportTickets/{ticketId} {
+      allow get: if isValidId(ticketId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(ticketId) && isVerifiedUser()
+        && isValidSupportTicket(incoming())
+        && incoming().userId == request.auth.uid
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(ticketId) && isAdmin()
+        && isValidSupportTicket(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isValidId(ticketId) && isAdmin();
+    }
+
+    // User Feedback
+    match /userFeedback/{feedbackId} {
+      allow get: if isValidId(feedbackId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(feedbackId) && isVerifiedUser()
+        && isValidUserFeedback(incoming())
+        && incoming().userId == request.auth.uid
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(feedbackId) && isAdmin()
+        && isValidUserFeedback(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'updatedAt']);
+      allow delete: if isValidId(feedbackId) && isAdmin();
+    }
+
+    // Subscriptions
+    match /subscriptions/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(uid) && isVerifiedUser() && isOwner(uid)
+        && isValidSubscription(incoming(), uid)
+        && incoming().plan == 'free'
+        && incoming().status == 'active'
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(uid) && isVerifiedUser() && isValidSubscription(incoming(), uid)
+        && incoming().userId == existing().userId
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            isOwner(uid) &&
+            incoming().plan == existing().plan &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['aiQueriesUsed', 'eligibilityChecksUsed', 'status', 'updatedAt'])
+          )
+        );
+    }
+
+    // AI Usage Logs
+    match /aiUsage/{usageId} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(usageId) && isVerifiedUser()
+        && isValidAIUsageLog(incoming())
+        && incoming().createdAt == request.time;
+    }
+
+    // Admin Audit Logs (immutable)
+    match /adminAuditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(logId) && isAdmin()
+        && isValidAdminAuditLog(incoming())
+        && incoming().createdAt == request.time;
+    }
+
+    // Platform Settings
+    match /platformSettings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if resource.data.showAnnouncement == true || isAdmin();
+      allow create, update: if isValidId(settingId) && isAdmin()
+        && isValidPlatformSetting(incoming())
+        && incoming().updatedAt == request.time;
+    }
+  }
+}

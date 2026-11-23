@@ -1,0 +1,8 @@
+{
+  "name": "FormSaathi",
+  "description": "Your Career. Your Opportunities. One Platform. AI-powered career discovery, rule-based eligibility checking, resume studio, and application tracking for India.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
